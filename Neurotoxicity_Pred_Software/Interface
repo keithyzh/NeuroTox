@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Neurotoxicity Prediction Software</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+        background: #f9fafb;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px;
+    }
+    .container {
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        max-width: 1200px;
+        width: 100%;
+    }
+    h1 {
+        font-weight: 600;
+        font-size: 1.5em;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    p {
+        font-size: 0.95em;
+        color: #555;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    textarea {
+        width: 100%;
+        height: 140px;
+        font-family: monospace;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 1.5em;
+        resize: vertical;
+        transition: border 0.2s;
+    }
+    textarea:focus {
+        border-color: #007acc;
+        outline: none;
+    }
+    .button-group {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }
+    button {
+        background: #007acc;
+        color: #ffffff;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font-size: 1em;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-top: 5px;
+    }
+    button:hover {
+        background: #005fa3;
+    }
+    .loading {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 3px solid #007acc;
+        border-top: 3px solid transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        vertical-align: middle;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    .scroll-table {
+        overflow-x: auto;
+        margin-top: 20px;
+    }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.85em;
+        table-layout: fixed;
+        min-width: 800px;
+    }
+    th, td {
+        padding: 4px 6px;
+        border: 1px solid #ddd;
+        text-align: center;
+        max-width: 120px;
+        word-wrap: break-word;
+    }
+    thead th {
+        background-color: #007acc;
+        color: white;
+        font-weight: 600;
+    }
+    tbody tr:nth-child(even) {
+        background-color: #f1faff;
+    }
+    /* Sticky first column */
+    th:first-child,
+    td:first-child {
+        position: sticky;
+        left: 0;
+        background-color: #fff;
+        z-index: 2;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Neurotoxicity Prediction Software</h1>
+    <p>Enter SMILES strings below (one per line):</p>
+    <textarea id="smilesInput" placeholder="CCO\nCC(N)C(=O)O"></textarea>
+    <div class="button-group">
+        <button onclick="runPrediction()">Run Prediction</button>
+        <button id="downloadBtn" onclick="downloadCSV()">Download CSV</button>
+    </div>
+    <div id="output"></div>
+</div>
+<script>
+    const ENDPOINTS = ["BBB","BV2","HT22","LogLD","N2A","PC12","Rotarod","SHSY5"];
+    const UNIT_MAP={BBB:'logBB',BV2:'nM',HT22:'nM',LogLD:'mg/kg',N2A:'nM',PC12:'nM',Rotarod:'mg/kg',SHSY5:'nM'};
+    let latestData = [];
+
+    async function runPrediction() {
+        const smilesText = document.getElementById('smilesInput').value.trim();
+        const output = document.getElementById('output');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        if (!smilesText) {
+            output.innerHTML = "<div class='error'>❌ Please enter SMILES.</div>";
+            downloadBtn.style.display = "none";
+            return;
+        }
+
+        output.innerHTML = `
+            <div style="display:flex;justify-content:center;align-items:center;gap:8px;">
+                <div class="loading"></div><span>Processing...</span>
+            </div>
+        `;
+
+        try {
+            const resp = await fetch("http://127.0.0.1:8000/run_padel_neurotoxicity_prediction", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ smiles_list:smilesText.split('\n').map(s=>s.trim()).filter(s=>s) })
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            latestData = await resp.json();
+            displayTable(latestData);
+            downloadBtn.style.display = "inline-block";
+        } catch (err) {
+            output.innerHTML = `<div class='error'>❌ ${err.message}</div>`;
+            downloadBtn.style.display = "none";
+        }
+    }
+
+    function displayTable(data) {
+        const output = document.getElementById('output');
+        if (!Array.isArray(data) || !data.length) {
+            output.innerHTML = "<div class='error'>❌ No data returned.</div>";
+            return;
+        }
+
+        let html = '';
+        data.forEach(item => {
+            html += `<h2 style="margin-top:20px; text-align:center;">Results for ${item.SMILES}</h2>`;
+            html += `<div class="scroll-table"><table><thead>
+                <tr>
+                    <th>Endpoint</th><th>Range</th><th>Units</th><th>RMSE</th><th>Toxic?</th>
+                </tr>
+            </thead><tbody>`;
+
+            ENDPOINTS.forEach(ep => {
+                const range = item[`${ep}_range`]  || '–';
+                const rmse  = item[`${ep}_rmse`]!=null ? item[`${ep}_rmse`].toFixed(3) : '–';
+                const tox   = item[`${ep}_toxic`];
+                const flag  = tox===true
+                              ?   '<span style="color:seagreen">✓</span>'
+                              : (tox===false ? '<span style="color:crimson">✗</span>' : '–');
+
+                html += `<tr>
+                    <td>${ep}</td>
+                    <td>${range}</td>
+                    <td>${UNIT_MAP[ep]||''}</td>
+                    <td>${rmse}</td>
+                    <td>${flag}</td>
+                </tr>`;
+            });
+
+            html += `</tbody></table></div>`;
+        });
+
+        output.innerHTML = html;
+    }
+
+    function downloadCSV() {
+        if (!latestData.length) { alert("No data to download."); return; }
+        const headers = ["SMILES","Endpoint","Range","RMSE","Toxic"];
+        let csv = headers.join(",") + "\n";
+        latestData.forEach(item => {
+            ENDPOINTS.forEach(ep => {
+                const row = [
+                    item.SMILES||'',
+                    ep,
+                    item[`${ep}_range`]||'',
+                    item[`${ep}_rmse`]!=null ? item[`${ep}_rmse`].toFixed(3):'',
+                    item[`${ep}_toxic`]===true ? 'Yes' : (item[`${ep}_toxic`]===false ? 'No':'')
+                ];
+                csv += row.map(v => v.includes(',') ? `"${v.replace(/"/g,'""')}"` : v).join(',') + '\n';
+            });
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "predictions_vertical.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+</body>
+</html>
