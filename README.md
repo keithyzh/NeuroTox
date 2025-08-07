@@ -1,1 +1,7 @@
 # NeuroTox
+Neurotoxicity prediction is limited by slow, resource-intensive in vivo tests, in vitro assays with narrow breadth, and computational models trained on small, binary-labelled datasets. To address these gaps, we systematically re-curated eight neurotoxicity endpoints - spanning neurogenic cell lines (SHSY5Y, HT22, N2A, BV2, PC12), in vivo mouse assay (Rotarod, LD50), and blood-brain barrier penetration - from primary literature and large repositories such as PubChem and ChEMBL.
+
+After standardizing units and filtering unreliable duplicates, we compiled eight numeric datasets that can be used to predict the dose required to cause neurotoxicity. Each compound was processed to generate 1,841 descriptors (Physicochemical, Pharmacophore, Toxicophore), then reduced via variance filtering, correlation pruning, and recursive feature elimination to maximise information content while minimizing redundancy.
+
+Using these 8 datasets, eight machine learning algorithms—including Extra Trees Regressor and Gaussian Process Regression—were trained and evaluated to identify the best performer per endpoint, followed by targeted hyperparameter optimization. The resulting models achieved moderate predictive accuracy when assessed with various accuracy metrics. Finally, we packaged the workflow as user ready software providing a scalable foundation for future data work. The software was subsequently applied to a real-world case by predicting neurotoxic constituents in a Traditional Chinese Medicinal (TCM) herb.
+
